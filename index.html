@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#2d5a14">
 <title>Optimum — Daily Field Report</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
 <style>
 :root {
   --g900:#1a3a0a;--g800:#2d5a14;--g700:#3d6b1a;--g600:#4a7a20;--g500:#5b8c2a;--g400:#7db043;--g300:#a3cc6e;--g200:#d4e8b8;--g100:#eaf4dc;--g50:#f5faf0;
@@ -749,7 +750,7 @@ td{padding:7px 12px;border-bottom:1px solid #e8e8e8}tr:nth-child(even) td{backgr
 }
 
 // ─── SUBMIT ───
-function submitReport() {
+async function submitReport() {
   const report = buildReport();
 
   // Show preview
@@ -758,16 +759,93 @@ function submitReport() {
   document.body.style.overflow = 'hidden';
   document.title = report.filename;
 
-  // Auto-download the report as HTML file
-  downloadReport();
+  toast('⏳ Generating PDF...');
 
-  // Queue for SharePoint
-  queueReport(report);
+  // Generate PDF from the report HTML
+  try {
+    const pdfBlob = await generatePDF(report.html);
+    const pdfBase64 = await blobToBase64(pdfBlob);
 
-  toast('✅ Report saved to device and queued for SharePoint');
+    // Auto-download PDF
+    const url = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = report.filename + '.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Queue for SharePoint with PDF
+    queueReport(report, pdfBase64);
+
+    toast('✅ PDF saved to device and queued for SharePoint');
+  } catch(e) {
+    console.error('PDF error:', e);
+    toast('⚠️ PDF failed — saving HTML instead', true);
+    downloadReportHTML();
+    queueReport(report, null);
+  }
+}
+
+async function generatePDF(html) {
+  // Create a hidden container, inject the report HTML, convert to PDF
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = '800px';
+  container.innerHTML = html;
+  // Strip the outer html/head/body tags and extract just the body content
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  if (bodyMatch) container.innerHTML = bodyMatch[1];
+  document.body.appendChild(container);
+
+  const opt = {
+    margin: [0.3, 0.3, 0.3, 0.3],
+    filename: 'report.pdf',
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+  };
+
+  const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
+  document.body.removeChild(container);
+  return pdfBlob;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 function downloadReport() {
+  // Re-generate PDF for manual save button
+  if (!reportHTML) buildReport();
+  toast('⏳ Generating PDF...');
+  generatePDF(reportHTML).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = getFN() + '.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('✅ PDF saved to device');
+  }).catch(e => {
+    console.error('PDF error:', e);
+    downloadReportHTML();
+  });
+}
+
+function downloadReportHTML() {
+  // Fallback to HTML download
   if (!reportHTML) buildReport();
   const fn = getFN();
   const blob = new Blob([reportHTML], {type:'text/html'});
@@ -782,14 +860,18 @@ function downloadReport() {
 }
 
 // ─── OFFLINE QUEUE ───
-function queueReport(report) {
+function queueReport(report, pdfBase64) {
   try {
     const queue = JSON.parse(localStorage.getItem('optimum_queue') || '[]');
     queue.push({
       id: Date.now(),
       filename: report.filename,
-      html: report.html,
-      timestamp: new Date().toISOString()
+      content: pdfBase64 || report.html,
+      isPDF: !!pdfBase64,
+      timestamp: new Date().toISOString(),
+      formType: 'DailyFieldReport',
+      prepEmail: document.getElementById('prepEmail').value || '',
+      ccEmail: document.getElementById('ccEmail').value || ''
     });
     localStorage.setItem('optimum_queue', JSON.stringify(queue));
     updateQueueBar();
@@ -833,13 +915,17 @@ async function processQueue() {
 
   for (const item of queue) {
     try {
+      const ext = item.isPDF ? '.pdf' : '.html';
       const resp = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          filename: item.filename + '.html',
-          content: item.html,
-          timestamp: item.timestamp
+          filename: item.filename + ext,
+          content: item.content,
+          timestamp: item.timestamp,
+          formType: item.formType || 'DailyFieldReport',
+          prepEmail: item.prepEmail || '',
+          ccEmail: item.ccEmail || ''
         })
       });
       if (!resp.ok) throw new Error('Failed');
