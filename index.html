@@ -787,26 +787,24 @@ async function submitReport() {
 }
 
 async function generatePDF(html) {
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
-  container.style.top = '0';
-  container.style.width = '800px';
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  container.innerHTML = bodyMatch ? bodyMatch[1] : html;
-  document.body.appendChild(container);
+  // Use the preview container which is already rendered with styles
+  const previewEl = document.getElementById('pb');
+
+  // If preview isn't populated yet, inject and style it
+  if (!previewEl.innerHTML.trim()) {
+    previewEl.innerHTML = html;
+  }
 
   const opt = {
     margin: [0.3, 0.3, 0.3, 0.3],
     filename: 'report.pdf',
     image: { type: 'jpeg', quality: 0.95 },
-    html2canvas: { scale: 2, useCORS: true, logging: false },
+    html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0 },
     jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
   };
 
-  const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
-  document.body.removeChild(container);
+  const pdfBlob = await html2pdf().set(opt).from(previewEl).outputPdf('blob');
   return pdfBlob;
 }
 
