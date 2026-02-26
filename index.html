@@ -359,7 +359,8 @@ table.rt .ah-row .tc{color:var(--r600)}
     <div class="pt">
       <h3>Report Preview</h3>
       <div class="btns">
-        <button class="btn btn-green" onclick="downloadReport()">💾 Save to Device</button>
+        <button class="btn btn-green" onclick="downloadReport()">💾 Save PDF</button>
+        <button class="btn btn-green" onclick="shareReport()" id="shareBtn" style="display:none">📤 Share / Save to Files</button>
         <button class="btn btn-green" onclick="window.print()">🖨️ Print</button>
         <button class="btn btn-g" onclick="closePrint()" style="color:var(--d700);border-color:var(--d300)">✕ Close</button>
       </div>
@@ -750,6 +751,8 @@ td{padding:7px 12px;border-bottom:1px solid #e8e8e8}tr:nth-child(even) td{backgr
 }
 
 // ─── SUBMIT ───
+let lastPdfBlob = null;
+
 async function submitReport() {
   const report = buildReport();
 
@@ -761,44 +764,36 @@ async function submitReport() {
 
   toast('⏳ Generating PDF...');
 
-  // Generate PDF from the report HTML
-  try {
-    const pdfBlob = await generatePDF(report.html);
-    const pdfBase64 = await blobToBase64(pdfBlob);
+  // Show share button if available on this device
+  if (navigator.share && navigator.canShare) {
+    document.getElementById('shareBtn').style.display = '';
+  }
 
-    // Auto-download PDF
-    const url = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = report.filename + '.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // Generate PDF
+  try {
+    lastPdfBlob = await generatePDF(report.html);
+    const pdfBase64 = await blobToBase64(lastPdfBlob);
 
     // Queue for SharePoint with PDF
     queueReport(report, pdfBase64);
 
-    toast('✅ PDF saved to device and queued for SharePoint');
+    toast('✅ Report ready — tap Save PDF or Share to download');
   } catch(e) {
     console.error('PDF error:', e);
-    toast('⚠️ PDF failed — saving HTML instead', true);
-    downloadReportHTML();
+    lastPdfBlob = null;
     queueReport(report, null);
+    toast('⚠️ PDF generation failed — use Print to save', true);
   }
 }
 
 async function generatePDF(html) {
-  // Create a hidden container, inject the report HTML, convert to PDF
   const container = document.createElement('div');
   container.style.position = 'fixed';
   container.style.left = '-9999px';
   container.style.top = '0';
   container.style.width = '800px';
-  container.innerHTML = html;
-  // Strip the outer html/head/body tags and extract just the body content
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  if (bodyMatch) container.innerHTML = bodyMatch[1];
+  container.innerHTML = bodyMatch ? bodyMatch[1] : html;
   document.body.appendChild(container);
 
   const opt = {
@@ -825,27 +820,67 @@ function blobToBase64(blob) {
 }
 
 function downloadReport() {
-  // Re-generate PDF for manual save button
-  if (!reportHTML) buildReport();
-  toast('⏳ Generating PDF...');
-  generatePDF(reportHTML).then(blob => {
-    const url = URL.createObjectURL(blob);
+  const fn = getFN() + '.pdf';
+  if (lastPdfBlob) {
+    // Try direct download first
+    const url = URL.createObjectURL(lastPdfBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = getFN() + '.pdf';
+    a.download = fn;
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('✅ PDF saved to device');
-  }).catch(e => {
-    console.error('PDF error:', e);
-    downloadReportHTML();
-  });
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1000);
+    toast('✅ PDF downloading — check your Downloads folder');
+  } else {
+    // Regenerate
+    if (!reportHTML) buildReport();
+    toast('⏳ Generating PDF...');
+    generatePDF(reportHTML).then(blob => {
+      lastPdfBlob = blob;
+      downloadReport();
+    }).catch(() => {
+      toast('⚠️ PDF failed — use Share or Print instead', true);
+    });
+  }
+}
+
+async function shareReport() {
+  const fn = getFN() + '.pdf';
+  if (!lastPdfBlob) {
+    toast('⏳ Generating PDF...');
+    try { lastPdfBlob = await generatePDF(reportHTML); }
+    catch(e) { toast('⚠️ PDF failed', true); return; }
+  }
+
+  const file = new File([lastPdfBlob], fn, { type: 'application/pdf' });
+
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        title: fn,
+        files: [file]
+      });
+      toast('✅ Shared successfully');
+    } else {
+      // Fallback: open in new tab
+      const url = URL.createObjectURL(lastPdfBlob);
+      window.open(url, '_blank');
+      toast('📄 PDF opened — long-press to save');
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      const url = URL.createObjectURL(lastPdfBlob);
+      window.open(url, '_blank');
+      toast('📄 PDF opened — long-press to save');
+    }
+  }
 }
 
 function downloadReportHTML() {
-  // Fallback to HTML download
   if (!reportHTML) buildReport();
   const fn = getFN();
   const blob = new Blob([reportHTML], {type:'text/html'});
