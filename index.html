@@ -899,8 +899,7 @@ function queueReport(report, pdfBase64) {
     queue.push({
       id: Date.now(),
       filename: report.filename,
-      content: pdfBase64 || report.html,
-      isPDF: !!pdfBase64,
+      content: report.html,
       timestamp: new Date().toISOString(),
       formType: 'DailyFieldReport',
       prepEmail: document.getElementById('prepEmail').value || '',
@@ -948,12 +947,11 @@ async function processQueue() {
 
   for (const item of queue) {
     try {
-      const ext = item.isPDF ? '.pdf' : '.html';
       const resp = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          filename: item.filename + ext,
+          filename: item.filename + '.html',
           content: item.content,
           timestamp: item.timestamp,
           formType: item.formType || 'DailyFieldReport',
