@@ -316,7 +316,7 @@ table.rt .ah-row .tc{color:var(--r600)}
   <div class="sec-h"><span class="ic">📷</span> Before Photos</div>
   <div class="sec-b">
     <div class="ph-drop" onclick="document.getElementById('phBefore').click()">
-      <div class="ph-ic">📸</div><p>Tap to take photo or upload</p><div class="hint">Photos timestamped automatically</div>
+      <div class="ph-ic">📸</div><p>Tap to take photo or upload</p><div class="hint">Camera photos labeled "Taken" · Gallery photos labeled "Uploaded"</div>
     </div>
     <input type="file" id="phBefore" multiple accept="image/*" style="display:none" onchange="handlePhotos(this.files,'before')">
     <div class="ph-grid" id="gridBefore"></div>
@@ -328,7 +328,7 @@ table.rt .ah-row .tc{color:var(--r600)}
   <div class="sec-h"><span class="ic">📷</span> After Photos</div>
   <div class="sec-b">
     <div class="ph-drop" onclick="document.getElementById('phAfter').click()">
-      <div class="ph-ic">📸</div><p>Tap to take photo or upload</p><div class="hint">Photos timestamped automatically</div>
+      <div class="ph-ic">📸</div><p>Tap to take photo or upload</p><div class="hint">Camera photos labeled "Taken" · Gallery photos labeled "Uploaded"</div>
     </div>
     <input type="file" id="phAfter" multiple accept="image/*" style="display:none" onchange="handlePhotos(this.files,'after')">
     <div class="ph-grid" id="gridAfter"></div>
@@ -576,8 +576,10 @@ function setupDD(){
 function handlePhotos(files, type) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
+    // If file was modified in the last 60 seconds, it was just taken with camera
+    const isCamera = (Date.now() - file.lastModified) < 60000;
     const reader = new FileReader();
-    reader.onload = e => stampPhoto(e.target.result, (stamped, ts) => {
+    reader.onload = e => stampPhoto(e.target.result, isCamera, (stamped, ts) => {
       (type==='before'?photosBefore:photosAfter).push({name:file.name, data:stamped, caption:'', timestamp:ts});
       renderPh(type);
     });
@@ -585,7 +587,7 @@ function handlePhotos(files, type) {
   }
 }
 
-function stampPhoto(src, cb) {
+function stampPhoto(src, isCamera, cb) {
   const img = new Image();
   img.onload = () => {
     const c = document.createElement('canvas');
@@ -593,9 +595,11 @@ function stampPhoto(src, cb) {
     c.width = img.width; c.height = img.height;
     ctx.drawImage(img, 0, 0);
     const now = new Date();
-    const ts = now.toLocaleString('en-US',{month:'2-digit',day:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const tsStr = now.toLocaleString('en-US',{month:'2-digit',day:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const label = isCamera ? 'Taken' : 'Uploaded';
     const loc = getLocName() || 'Location N/A';
-    const txt = `${ts}  |  ${loc}`;
+    const txt = `${label}: ${tsStr}  |  ${loc}`;
+    const ts = `${label}: ${tsStr}`;
     const bH = Math.max(28, img.height*.035);
     const fS = Math.max(14, bH*.55);
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
