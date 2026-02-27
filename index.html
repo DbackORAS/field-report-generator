@@ -318,7 +318,7 @@ table.rt .ah-row .tc{color:var(--r600)}
     <div class="ph-drop" onclick="document.getElementById('phBefore').click()">
       <div class="ph-ic">📸</div><p>Tap to take photo or upload</p><div class="hint">Photos timestamped automatically</div>
     </div>
-    <input type="file" id="phBefore" multiple accept="image/*" capture="environment" style="display:none" onchange="handlePhotos(this.files,'before')">
+    <input type="file" id="phBefore" multiple accept="image/*" style="display:none" onchange="handlePhotos(this.files,'before')">
     <div class="ph-grid" id="gridBefore"></div>
   </div>
 </div>
@@ -330,7 +330,7 @@ table.rt .ah-row .tc{color:var(--r600)}
     <div class="ph-drop" onclick="document.getElementById('phAfter').click()">
       <div class="ph-ic">📸</div><p>Tap to take photo or upload</p><div class="hint">Photos timestamped automatically</div>
     </div>
-    <input type="file" id="phAfter" multiple accept="image/*" capture="environment" style="display:none" onchange="handlePhotos(this.files,'after')">
+    <input type="file" id="phAfter" multiple accept="image/*" style="display:none" onchange="handlePhotos(this.files,'after')">
     <div class="ph-grid" id="gridAfter"></div>
   </div>
 </div>
